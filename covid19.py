@@ -30,10 +30,11 @@
 import COVID19Py
 import numpy as np
 from matplotlib import pyplot as plt
-# importando as libs
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+import io
+import requests
 
 # @brief: Make some linear graphics
 # @param: c1, c2, c3, c4 are the countries objects
@@ -169,17 +170,48 @@ def computeLinearRegression(c1):
     previsao_y = clf.predict(novo_x)
     print(previsao_y)
 
+
+#class WorldAgainsCovid19():
+#    def __init__(self):
+#        self.country_name = ""
+#        self.DailyCases = []
 # @brief: Object from country, we have a setData function which one receive dada from API and set into the class and getData return this data as a list
 # @param: covid19 is the API object
 # @param: name is the country name such as Brazil
 # @param: code is the country code such as BR, US, IT
 # @param: color is a arbitrary color for the graphics
-class CountryAgainstCovid19:
+class CountryAgainstCovid19():
     def __init__(self, covid19, name, code, color):
         self.country_name = name
         self.country_code = code
         self.country_color = color
         self.covid19 = covid19
+        self.DailyCases = []
+        
+    def setData_URL(self, url='https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv'):
+        rawData=requests.get(url).text.encode()
+        rawData = io.BytesIO(rawData) #rawData é um arquivo byte, transforma em ioBytes 
+        lines = rawData.readlines()   #Com objeto ioBytes tem acesso ao readlines 
+
+        #Header
+        #print(lines[0])
+        dataLines = lines[0].decode().split(',')  #Lines[0] tem o header Provicia, country, latiture, longitude os dias de 22/01 até atualmente
+
+        for line in lines[1:]:
+            data = line.decode().split(',')
+            if (data[1] == self.country_name):
+                day_c = 0
+                for e, cases in enumerate(data[4:]):
+                    #Separa o timestamp
+                    tmp = dataLines[e+4].split('/')
+                    tmp = str(tmp[0]+"-"+tmp[1])
+                    #casting
+                    cases = int(cases)
+                    #coloca em uma lista onde cada linha é uma lista [mm-dd, casosAcumulados, novosCasos]
+                    self.DailyCases.append([tmp, cases, (cases - day_c)])
+                    print(self.country_code, " TimeStamp: ", tmp,"-> Cases: ", cases, "-> Daily New Cases: +", (int(cases) - day_c) )
+                    day_c = cases
+    
     def setData(self):
         #Redebe dados da API (Se retornar sem info é problema no json da API espera normalizar)
         data = self.covid19.getLocationByCountryCode(self.country_code, timelines=True)
@@ -189,7 +221,7 @@ class CountryAgainstCovid19:
         newData = [ [k,v] for k, v in data.items() ]
         #Pega apartir do dia 21/02 onde começaram surtos na europa por isso o [30:0]
         #Separa a tupla [timestamp, casos] em duas listas
-        self.DailyCases, day_c = [], 0
+        day_c = 0
         for x,y in newData[30:]:
             print(self.country_code, " TimeStamp: ", x,"-> Cases: ", y, "-> Daily New Cases: +", (y - day_c) )
             #separa o timestamp
@@ -200,7 +232,9 @@ class CountryAgainstCovid19:
             day_c = y
     def getData(self):
         return self.DailyCases
-        #return DailyCases
+
+    def resetData(self):
+        self.DailyCases.clear()
 
 # ------------------------- MAIN -------------------------#
 #Create a object from API COVID19Py
@@ -210,16 +244,16 @@ print(latestData)
 
 #Create the objects for the countries and set the data
 br = CountryAgainstCovid19(covid19, "Brazil", "BR","green")
-br.setData()
+br.setData_URL()
 
-usa = CountryAgainstCovid19(covid19, "USA", "US","red")
-usa.setData()
+usa = CountryAgainstCovid19(covid19, "US", "US","red")
+usa.setData_URL()
 
 it = CountryAgainstCovid19(covid19, "Italy", "IT","black")
-it.setData()
+it.setData_URL()
 
 sp = CountryAgainstCovid19(covid19, "Spain", "ES","blue")
-sp.setData()
+sp.setData_URL()
 
 #Compute the linear regression for Brazil
 #computeLinearRegression(br)
