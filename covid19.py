@@ -34,7 +34,9 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 import io
+import sys
 import requests
+from copy import copy
 
 # @brief: Make some linear graphics
 # @param: c1, c2, c3, c4 are the countries objects
@@ -138,50 +140,117 @@ def doBarGraph(c1, c2, c3, c4):
     plt.show()
 
 # @brief: Make a linear regression bases on cases/day and days (NOT ready yet!!!)
-# @param: c1 is the countries object
+# @param: country is the object from some country
+# @param: label is the type of data which one you want use like newCases, Cases or deaths
 # @return: void
-def computeLinearRegression(c1):
-    from sklearn import linear_model
+class linearRegressionModel():
+    def __init__(self, country, label):
+        self.country = country
+        self.acquisitionName = label 
+        self.model = LinearRegression()
+    def computeModel(self, prediction = [80,81,82,83]):
+        #Cria um array baseado na label informada
+        if(self.acquisitionName == 'newCases'): self.dataYf = np.array([f for k,v,f in self.country.getData()])
+        elif(self.acquisitionName == 'Cases'): self.dataYf = np.array([v for k,v,f in self.country.getData()])
+        elif(self.acquisitionName == 'Deaths'): self.dataYf = np.array([v for k,v,f in self.country.getData()])
+        #Cria um array de dias absolutos
+        self.dataXf = np.array(range(len(self.country.getData()))).reshape((-1, 1))
+        
+        #Refatora o array para pegar so a partir da inclinação da curva
+        self.dataY = self.dataYf[60:]
+        self.dataX = self.dataXf[60:]
 
-    X = np.array(range(len(c1.getData()))).reshape((-1, 1))
-    #print(X)
-    y = np.array([v for k,v,f in c1.getData()])
-    #print(y)
-
-    #create the LinearRegression model
-    clf = LinearRegression()
-
-    #train model
-    clf.fit(X, y)
-    # 4. Avalia o modelo
-    print('coeficiente de determinação:', clf.score(X, y))
-
-    # Intercept
-    print('intercept:', clf.intercept_)
+        #treina o modelo
+        self.model.fit(self.dataX, self.dataY)
+        #Cria um array de teste
+        newX = np.array(prediction).reshape((-1, 1))
+        #Aplica os novos dias ao modelo e estima o Y
+        self.yPred = self.model.predict(newX)
+        print("\n---- Prediction ------")
+        for i, y in enumerate(self.yPred):
+            print("X: ", newX[i], "Y: %.2f"%(y))
     
-    # Slope
-    print('slope:', clf.coef_)
+    def getModel(self):
+        return self.model
+    
+    def getPredicition(self):
+        return self.yPred
 
-    # 5. Cria um novo conjunto de dados x. Arange gera um array com elementos de 0(inclusivo) a 5 (exclusivo)
-    novo_x = np.arange(5).reshape((-1, 1))
-    print(novo_x)
+    def doGraphic(self):
+        #Plota Gaficos de regressão
+        plt.figure('Covid-19 ', figsize=(14,6))
+        #Grafico em barra do crescimento dos 4 paises
+        plt.subplot(1,2,1)    
+        plt.scatter(self.dataX, self.dataY)
+        plt.plot(self.dataX, self.model.predict(self.dataX), color = 'red' )
+        plt.title("Linear Regression for %s"%(self.acquisitionName), fontsize = 'large',fontweight = 'bold')
+        plt.ylabel("Cases", fontsize = 'large',fontweight = 'bold')
+        plt.xlabel("Absolute days", fontsize = 'large',fontweight = 'bold')
 
-    # 6. Aplica o modelo num novo conjunto de dados
-    previsao_y = clf.predict(novo_x)
-    print(previsao_y)
+        plt.subplot(1,2,2)    
+        plt.plot(self.dataXf, self.dataYf)
+        plt.title("Linear Distribution", fontsize = 'large',fontweight = 'bold')
+        plt.ylabel("Cases", fontsize = 'large',fontweight = 'bold')
+        plt.xlabel("Absolute days", fontsize = 'large',fontweight = 'bold')
+
+        plt.show()
 
 
-#class WorldAgainsCovid19():
-#    def __init__(self):
-#        self.country_name = ""
-#        self.DailyCases = []
+
+class WorldAgainstCovid19():
+    def __init__(self, countries):
+        self.countriesNames = countries
+        self.countries = []
+        for country in self.countriesNames:
+            self.c = CountryAgainstCovid19(name=country, code=country)
+            self.c.setData_URL()
+
+            #Verifica se tem mais de uma ocorrencia do pais caso tenha mais de uma data igual
+            cont = 0
+            for x,y,z in self.c.getData():
+                if(x =='1-22'): cont+=1
+            #Se existe, da um merge nos dados somando os casos
+            if (cont>1): 
+                self.mergeSameCountry(country, country, cont)
+           
+            self.countries.append(self.c)
+
+    def mergeSameCountry(self, country, code, cont):
+        print(" -- Merge Country in %d:1 parts--"%(cont))
+        #Cria um objeto copia
+        cCopy = CountryAgainstCovid19(name=country, code=code)
+        cCopy.setData_URL()
+
+        #Reeseta os dados do original
+        self.c.resetData()
+        #Cria uma variavel step que é o passo de ocorrencia de cada data
+        step = int((len(cCopy.getData())/cont))
+        #Cria um laço de 0 até numero de ocorrencias 
+        for i in range(step):
+            acc1,acc2 = 0,0
+            #Cria um laço para pegar sempre todos os valores de uma data e acumular
+            for x,y,z in cCopy.getData()[i::step]:
+                acc1+=y
+                acc2+=z
+            #Uma vez todos os valores de um dia acumulados, adiciona no objeto original
+            self.c.DailyCases.append([x,int(acc1),int(acc2)])
+
+    def getCountries(self):
+        return self.countries
+
+    def doGraphic(self, data):
+        fig1, ax1 = plt.subplots()
+        ax1.pie(data, labels = self.countriesNames, autopct = '%1.1f%%', shadow = True, startangle=90)
+        ax1.axis('equal')
+        plt.show()
+
 # @brief: Object from country, we have a setData function which one receive dada from API and set into the class and getData return this data as a list
 # @param: covid19 is the API object
 # @param: name is the country name such as Brazil
 # @param: code is the country code such as BR, US, IT
 # @param: color is a arbitrary color for the graphics
 class CountryAgainstCovid19():
-    def __init__(self, covid19, name, code, color):
+    def __init__(self, covid19=0, name='', code='', color='purple'):
         self.country_name = name
         self.country_code = code
         self.country_color = color
@@ -189,7 +258,13 @@ class CountryAgainstCovid19():
         self.DailyCases = []
         
     def setData_URL(self, url='https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv'):
-        rawData=requests.get(url).text.encode()
+        try:
+            rawData=requests.get(url).text.encode()
+        except:
+            print("Erro de conexão aos Dados...")
+            print("FInalizando programa")
+            sys.exit()
+
         rawData = io.BytesIO(rawData) #rawData é um arquivo byte, transforma em ioBytes 
         lines = rawData.readlines()   #Com objeto ioBytes tem acesso ao readlines 
 
@@ -203,13 +278,26 @@ class CountryAgainstCovid19():
                 day_c = 0
                 for e, cases in enumerate(data[4:]):
                     #Separa o timestamp
-                    tmp = dataLines[e+4].split('/')
-                    tmp = str(tmp[0]+"-"+tmp[1])
+                    try:
+                        tmp = dataLines[e+4].split('/')
+                        tmp = str(tmp[0]+"-"+tmp[1])
+                    except:
+                        tmp = 'ERRO'
                     #casting
-                    cases = int(cases)
+                    try:
+                        cases = np.uint64(cases)
+                    except:
+                        cases = float(cases)
+                        cases = np.uint64(cases)
+                    finally:
+                         #Teste de erro nos dados
+                        if(cases > 1000000):
+                            cases = 1
+                            day_c = 1
+
                     #coloca em uma lista onde cada linha é uma lista [mm-dd, casosAcumulados, novosCasos]
-                    self.DailyCases.append([tmp, cases, (cases - day_c)])
-                    print(self.country_code, " TimeStamp: ", tmp,"-> Cases: ", cases, "-> Daily New Cases: +", (int(cases) - day_c) )
+                    self.DailyCases.append([tmp, cases, int((cases - day_c))])
+                    #print(self.country_code, " TimeStamp: ", tmp,"-> Cases: ", cases, "-> Daily New Cases: +", int((int(cases) - day_c)) )
                     day_c = cases
     
     def setData(self):
@@ -230,32 +318,71 @@ class CountryAgainstCovid19():
             #coloca em uma lista onde cada linha é uma lista [mm-dd, casosAcumulados, novosCasos]
             self.DailyCases.append([tmp_st, y, (y - day_c)])
             day_c = y
+    def setDatabyList(self,data):
+        self.DailyCases = list(data)
     def getData(self):
         return self.DailyCases
 
     def resetData(self):
         self.DailyCases.clear()
 
+def getCountriesList(url='https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv'):
+    try:
+        rawData=requests.get(url).text.encode()
+    except:
+        print("Erro de conexão aos Dados...")
+        print("FInalizando programa")
+        sys.exit()
+
+    rawData = io.BytesIO(rawData) #rawData é um arquivo byte, transforma em ioBytes 
+    lines = rawData.readlines()   #Com objeto ioBytes tem acesso ao readlines 
+    countries = []
+    for line in lines[1:]:
+        data = line.decode().split(',')
+        if(data[1]=="\"Korea"): data[1]="Korea"
+        if(data[1] not in countries): countries.append(data[1])
+    return countries
+
+    
 # ------------------------- MAIN -------------------------#
 #Create a object from API COVID19Py
-covid19 = COVID19Py.COVID19()
-latestData = covid19.getLatest()
-print(latestData)
+#Descomente para usar esta API e use a função getData() da classe
+'''covid19 = COVID19Py.COVID19()
+#latestData = covid19.getLatest()
+#print(latestData)'''
 
+#Descomente para 'Criar' o mundo todo criando um objeto para cada país
+'''countries = getCountriesList()
+world = WorldAgainstCovid19(countries)'''
+
+#Decomente para criar top10 paises de uma vez
+#countries = ['US','Spain','Italy','Germany','France','China','Iran','United Kingdom','Turkey','Switzerland']
+countries = ['US','Spain','Italy','Germany','France']
+top10 = WorldAgainstCovid19(countries)
+
+top10Cases = []
+for country in top10.getCountries():
+    a = country.getData()
+    top10Cases.append(a[-1][-2])
+print(top10Cases)
+top10.doGraphic(top10Cases)
 #Create the objects for the countries and set the data
-br = CountryAgainstCovid19(covid19, "Brazil", "BR","green")
+br = CountryAgainstCovid19(0, "Brazil", "BR","green")
 br.setData_URL()
 
-usa = CountryAgainstCovid19(covid19, "US", "US","red")
+usa = CountryAgainstCovid19(0, "US", "US","red")
 usa.setData_URL()
 
-it = CountryAgainstCovid19(covid19, "Italy", "IT","black")
+it = CountryAgainstCovid19(0, "Italy", "IT","black")
 it.setData_URL()
 
-sp = CountryAgainstCovid19(covid19, "Spain", "ES","blue")
+sp = CountryAgainstCovid19(0, "Spain", "ES","blue")
 sp.setData_URL()
 
 #Compute the linear regression for Brazil
+br_lr = linearRegressionModel(br, 'Cases')
+br_lr.computeModel()
+br_lr.doGraphic()
 #computeLinearRegression(br)
 
 #Make some nice graphics
